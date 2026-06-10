@@ -99,3 +99,58 @@ export async function conversarComZare(message, history, provider, apiKey, perio
   if (!r.ok) throw new Error("Falha ao conversar com a assistente");
   return r.json();
 }
+
+/**
+ * Obtém a lista de funcionários cadastrados.
+ */
+export async function obterFuncionarios() {
+  const r = await fetch(`${API_BASE}/employees`);
+  if (!r.ok) throw new Error("Falha ao obter funcionários");
+  return r.json();
+}
+
+/**
+ * Cadastra um novo funcionário.
+ */
+export async function cadastrarFuncionario(dados) {
+  const r = await fetch(`${API_BASE}/employees`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dados)
+  });
+  if (!r.ok) throw new Error("Erro ao cadastrar funcionário");
+  return r.json();
+}
+
+/**
+ * Atualiza os dados de um funcionário.
+ */
+export async function atualizarFuncionario(id, dados) {
+  const r = await fetch(`${API_BASE}/employees/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dados)
+  });
+  if (!r.ok) throw new Error("Erro ao atualizar funcionário");
+  return r.json();
+}
+
+/**
+ * Remove um funcionário.
+ */
+export async function excluirFuncionario(id) {
+  const r = await fetch(`${API_BASE}/employees/${id}`, {
+    method: "DELETE"
+  });
+  if (!r.ok) throw new Error("Erro ao excluir funcionário");
+  return r.json();
+}
+
+/**
+ * Busca os dados de período de todas as empresas de um determinado mês.
+ */
+export async function obterPeriodosDoMes(periodo) {
+  const r = await fetch(`${API_BASE}/periods/${periodo}`);
+  if (!r.ok) throw new Error("Erro ao carregar dados do período");
+  return r.json();
+}
