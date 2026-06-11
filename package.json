@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "homepage": "https://Contabilizar.github.io/contabilizare-hub",
+  "homepage": "https://Contabilizar.github.io/hub",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -13,9 +13,10 @@
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
+    "lucide-react": "^0.395.0",
+    "mammoth": "^1.12.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "lucide-react": "^0.395.0"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",
