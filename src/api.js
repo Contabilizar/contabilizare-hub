@@ -433,3 +433,11 @@ export async function desinstalarCertificadoNoSO(thumbprint) {
   }
   return r.json();
 }
+
+export function obterHelperScriptUrl() {
+  return `${API_BASE}/certificates/helper/script`;
+}
+
+export function obterHelperRegUrl() {
+  return `${API_BASE}/certificates/helper/reg`;
+}

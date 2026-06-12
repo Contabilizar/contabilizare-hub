@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { 
   Trash2, Plus, Search, Download, Loader, AlertTriangle, 
-  Eye, EyeOff, ShieldCheck, Check, X, Folder, Key
+  Eye, EyeOff, ShieldCheck, Check, X, Folder, Key, Lock,
+  Terminal, FileCode, ExternalLink, Info, HelpCircle
 } from "lucide-react";
 
 import { 
@@ -10,10 +11,8 @@ import {
   excluirCertificado, 
   uploadCertificado, 
   obterDownloadCertificadoUrl,
-  instalarCertificadoNoSO,
-  abrirPastaCertificado,
-  obterCertificadosInstaladosNoSO,
-  desinstalarCertificadoNoSO
+  obterHelperScriptUrl,
+  obterHelperRegUrl
 } from "./api";
 
 // Constantes de Cores para coerência estética
@@ -36,9 +35,9 @@ const C = {
 };
 
 export default function Certificados({ me, active }) {
-  const [activeTab, setActiveTab] = useState("CNPJ"); // "CNPJ", "CPF" ou "INSTALADOS"
+  const [activeTab, setActiveTab] = useState("DASHBOARD"); // "DASHBOARD", "CNPJ", "CPF" ou "INSTALADOS"
   const [certs, setCerts] = useState([]);
-  const [installedCerts, setInstalledCerts] = useState([]);
+  const [allCerts, setAllCerts] = useState({ cnpj: [], cpf: [] });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   
@@ -55,23 +54,24 @@ export default function Certificados({ me, active }) {
 
   // Carregar dados
   const loadCerts = async () => {
+    if (activeTab === "INSTALADOS") {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      if (activeTab === "CNPJ") {
+      if (activeTab === "DASHBOARD") {
+        const [cnpjData, cpfData] = await Promise.all([
+          obterCertificadosCNPJ(""),
+          obterCertificadosCPF("")
+        ]);
+        setAllCerts({ cnpj: cnpjData, cpf: cpfData });
+      } else if (activeTab === "CNPJ") {
         const data = await obterCertificadosCNPJ(search);
         setCerts(data);
       } else if (activeTab === "CPF") {
         const data = await obterCertificadosCPF(search);
         setCerts(data);
-      } else if (activeTab === "INSTALADOS") {
-        let data = await obterCertificadosInstaladosNoSO();
-        if (search) {
-          data = data.filter(c => 
-            c.nome.toLowerCase().includes(search.toLowerCase()) || 
-            c.thumbprint.toLowerCase().includes(search.toLowerCase())
-          );
-        }
-        setInstalledCerts(data);
       }
     } catch (err) {
       console.error("Erro ao carregar certificados:", err);
@@ -94,37 +94,32 @@ export default function Certificados({ me, active }) {
     }));
   };
 
-  // Instalação de Certificado no Windows local
-  const handleInstallSO = async (id, nome) => {
-    try {
-      const res = await instalarCertificadoNoSO(activeTab, id);
-      alert(res.message || `Certificado de "${nome}" instalado com sucesso no Windows!`);
-    } catch (err) {
-      alert(err.message || "Erro ao instalar certificado no Windows.");
-    }
-  };
-
-  // Abrir pasta contendo o certificado no explorer do host
-  const handleOpenFolder = async (id) => {
-    try {
-      await abrirPastaCertificado(activeTab, id);
-    } catch (err) {
-      alert(err.message || "Erro ao abrir pasta contendo o certificado.");
-    }
-  };
-
-  // Desinstalar certificado do Windows local por thumbprint
-  const handleUninstallSO = async (thumbprint, nome) => {
-    if (!window.confirm(`Deseja realmente remover o certificado "${nome}" das chaves locais do Windows?`)) {
+  // Instalação de Certificado no Windows local via Protocolo Personalizado
+  const handleInstallSO = (c) => {
+    const file = c.caminho_arquivo || "";
+    const password = c.senha || "";
+    const name = c.nome || "";
+    
+    if (!file) {
+      alert("Caminho do arquivo do certificado não especificado.");
       return;
     }
-    try {
-      const res = await desinstalarCertificadoNoSO(thumbprint);
-      alert(res.message || "Certificado desinstalado do Windows com sucesso.");
-      loadCerts();
-    } catch (err) {
-      alert(err.message || "Erro ao desinstalar certificado do Windows.");
+    
+    const protocolUrl = `contabilizare://install?file=${encodeURIComponent(file)}&password=${encodeURIComponent(password)}&name=${encodeURIComponent(name)}`;
+    window.location.href = protocolUrl;
+  };
+
+  // Abrir pasta contendo o certificado no explorer local via Protocolo Personalizado
+  const handleOpenFolder = (c) => {
+    const file = c.caminho_arquivo || "";
+    
+    if (!file) {
+      alert("Caminho do arquivo do certificado não especificado.");
+      return;
     }
+    
+    const protocolUrl = `contabilizare://open?file=${encodeURIComponent(file)}`;
+    window.location.href = protocolUrl;
   };
 
   // Envio de Upload de arquivo
@@ -193,6 +188,56 @@ export default function Certificados({ me, active }) {
     }
   };
 
+  // Cálculos do Dashboard Geral de Certificados
+  const totalCertsList = useMemo(() => {
+    return [...allCerts.cnpj, ...allCerts.cpf];
+  }, [allCerts]);
+
+  const stats = useMemo(() => {
+    const totalCNPJ = allCerts.cnpj.length;
+    const totalCPF = allCerts.cpf.length;
+    const expirados = totalCertsList.filter(c => c.status_calculado === "expirado").length;
+    const alerta = totalCertsList.filter(c => c.status_calculado === "alerta").length;
+    const validados = totalCertsList.filter(c => c.status_calculado === "valido").length;
+    const total = totalCertsList.length;
+    return { totalCNPJ, totalCPF, expirados, alerta, validados, total };
+  }, [allCerts, totalCertsList]);
+
+  const expirationTimelineData = useMemo(() => {
+    const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    const today = new Date();
+    const result = [];
+    
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+      const mIdx = d.getMonth();
+      const year = d.getFullYear();
+      const label = `${months[mIdx]}/${String(year).substring(2)}`;
+      
+      const count = totalCertsList.filter(c => {
+        if (!c.vencimento) return false;
+        try {
+          const parts = c.vencimento.split("/");
+          const certMonth = parseInt(parts[1], 10) - 1;
+          const certYear = parseInt(parts[2], 10);
+          return certMonth === mIdx && certYear === year;
+        } catch (e) {
+          return false;
+        }
+      }).length;
+      
+      result.push({ label, count });
+    }
+    return result;
+  }, [totalCertsList]);
+
+  const criticalCerts = useMemo(() => {
+    return totalCertsList
+      .filter(c => c.dias_restantes !== null)
+      .sort((a, b) => a.dias_restantes - b.dias_restantes)
+      .slice(0, 5);
+  }, [totalCertsList]);
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 20, minHeight: 0 }}>
       {/* Cabeçalho */}
@@ -221,6 +266,17 @@ export default function Certificados({ me, active }) {
       {/* Abas e Busca */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${C.line}`, paddingBottom: 1 }}>
         <div style={{ display: "flex", gap: 24 }}>
+          <button 
+            onClick={() => { setActiveTab("DASHBOARD"); }}
+            style={{
+              background: "none", border: "none", padding: "12px 4px", fontSize: 15, 
+              fontWeight: 700, color: activeTab === "DASHBOARD" ? C.navy : C.muted, 
+              borderBottom: activeTab === "DASHBOARD" ? `3px solid ${C.navy}` : "3px solid transparent",
+              cursor: "pointer", transition: "all .2s"
+            }}
+          >
+            Painel Geral
+          </button>
           <button 
             onClick={() => { setActiveTab("CNPJ"); setVisiblePasswords({}); }}
             style={{
@@ -257,20 +313,22 @@ export default function Certificados({ me, active }) {
         </div>
 
         {/* Campo de Busca */}
-        <div style={{ position: "relative", width: 280 }}>
-          <Search size={16} color={C.muted} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} />
-          <input 
-            type="text" 
-            placeholder={activeTab === "INSTALADOS" ? "Buscar por assunto/thumb..." : "Buscar razão/nome ou doc..."} 
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{
-              width: "100%", padding: "8px 12px 8px 34px", borderRadius: 8, 
-              border: `1px solid ${C.line}`, fontSize: 13.5, background: "#fff", outline: "none",
-              color: C.ink, transition: "border .2s"
-            }}
-          />
-        </div>
+        {activeTab !== "DASHBOARD" && (
+          <div style={{ position: "relative", width: 280 }}>
+            <Search size={16} color={C.muted} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)" }} />
+            <input 
+              type="text" 
+              placeholder={activeTab === "INSTALADOS" ? "Buscar por assunto/thumb..." : "Buscar razão/nome ou doc..."} 
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                width: "100%", padding: "8px 12px 8px 34px", borderRadius: 8, 
+                border: `1px solid ${C.line}`, fontSize: 13.5, background: "#fff", outline: "none",
+                color: C.ink, transition: "border .2s"
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Listagem */}
@@ -280,49 +338,313 @@ export default function Certificados({ me, active }) {
             <Loader size={28} className="animate-spin" color={C.navy} />
             <span style={{ fontSize: 14, color: C.muted, fontWeight: 500 }}>Buscando certificados...</span>
           </div>
-        ) : activeTab === "INSTALADOS" ? (
-          /* Tabela de Certificados Instalados no SO */
-          installedCerts.length === 0 ? (
-            <div style={{ padding: 48, display: "flex", flexDirection: "column", alignItems: "center", justify: "center", gap: 12, color: C.muted }}>
-              <ShieldCheck size={40} strokeWidth={1.2} />
-              <span style={{ fontSize: 14, fontWeight: 600 }}>Nenhum certificado instalado encontrado no Windows</span>
-              <span style={{ fontSize: 12.5 }}>Certificados instalados no repositório local do usuário serão listados aqui.</span>
+        ) : activeTab === "DASHBOARD" ? (
+          /* Painel Geral (Dashboard) */
+          <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: 20, maxWidth: 1000, margin: "0 auto", width: "100%" }}>
+            {/* KPI Cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+              <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: "16px 20px" }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: C.muted }}>Total Pessoa Jurídica (CNPJ)</span>
+                <div style={{ fontSize: 24, fontWeight: 800, color: C.ink, marginTop: 4 }}>{stats.totalCNPJ}</div>
+              </div>
+              <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: "16px 20px" }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: C.muted }}>Total Pessoa Física (CPF)</span>
+                <div style={{ fontSize: 24, fontWeight: 800, color: C.ink, marginTop: 4 }}>{stats.totalCPF}</div>
+              </div>
+              <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: "16px 20px" }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: C.muted }}>Vencendo em breve (&le; 30 dias)</span>
+                <div style={{ fontSize: 24, fontWeight: 800, color: stats.alerta > 0 ? C.amber : C.ink, marginTop: 4 }}>{stats.alerta}</div>
+              </div>
+              <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: "16px 20px" }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: C.muted }}>Certificados Expirados</span>
+                <div style={{ fontSize: 24, fontWeight: 800, color: stats.expirados > 0 ? C.red : C.ink, marginTop: 4 }}>{stats.expirados}</div>
+              </div>
             </div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, textAlign: "left" }}>
-                <thead>
-                  <tr style={{ background: C.navySoft, borderBottom: `1px solid ${C.line}` }}>
-                    <th style={{ padding: "12px 16px", color: C.navy, fontWeight: 700 }}>Assunto (Subject)</th>
-                    <th style={{ padding: "12px 16px", color: C.navy, fontWeight: 700 }}>Thumbprint</th>
-                    <th style={{ padding: "12px 16px", color: C.navy, fontWeight: 700 }}>Validade</th>
-                    <th style={{ padding: "12px 16px", color: C.navy, fontWeight: 700, textAlign: "right" }}>Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {installedCerts.map((c, idx) => (
-                    <tr key={idx} style={{ borderBottom: `1px solid ${C.line}` }}>
-                      <td style={{ padding: "14px 16px", fontWeight: 600, color: C.ink }}>{c.nome}</td>
-                      <td style={{ padding: "14px 16px", color: C.body, fontFamily: "monospace", fontSize: 12.5 }}>{c.thumbprint}</td>
-                      <td style={{ padding: "14px 16px", color: C.body }}>{c.validade}</td>
-                      <td style={{ padding: "14px 16px", textAlign: "right" }}>
-                        <button 
-                          onClick={() => handleUninstallSO(c.thumbprint, c.nome)}
-                          title="Remover do Windows"
-                          style={{
-                            background: "#fee2e2", color: C.red, border: "none", padding: 6, 
-                            borderRadius: 6, cursor: "pointer", display: "inline-flex", alignItems: "center"
-                          }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </td>
+
+            {/* Gráficos em Duas Colunas */}
+            <div style={{ display: "flex", gap: 20 }}>
+              {/* Gráfico Donut de Status */}
+              <div style={{ flex: 1, background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 20, display: "flex", flexDirection: "column", gap: 16, alignItems: "center" }}>
+                <div style={{ fontWeight: 700, color: C.navy, fontSize: 13, alignSelf: "flex-start", width: "100%" }}>📊 Proporção de Validade</div>
+                {stats.total === 0 ? (
+                  <div style={{ height: 180, display: "flex", alignItems: "center", justify: "center", justifyContent: "center", color: C.muted }}>
+                    Nenhum certificado cadastrado.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 24, width: "100%", justifyContent: "center", marginTop: 8 }}>
+                    {/* SVG Donut */}
+                    <div style={{ position: "relative", width: 120, height: 120, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <svg width="120" height="120" viewBox="0 0 120 120" style={{ transform: "rotate(-90deg)", position: "absolute", left: 0, top: 0 }}>
+                        <circle cx="60" cy="60" r="50" fill="transparent" stroke={C.line} strokeWidth="10" />
+                        {stats.validados > 0 && (
+                          <circle
+                            cx="60"
+                            cy="60"
+                            r="50"
+                            fill="transparent"
+                            stroke={C.green}
+                            strokeWidth="10"
+                            strokeDasharray={`${(stats.validados / stats.total) * 314.16} 314.16`}
+                            strokeDashoffset={0}
+                          />
+                        )}
+                        {stats.alerta > 0 && (
+                          <circle
+                            cx="60"
+                            cy="60"
+                            r="50"
+                            fill="transparent"
+                            stroke={C.amber}
+                            strokeWidth="10"
+                            strokeDasharray={`${(stats.alerta / stats.total) * 314.16} 314.16`}
+                            strokeDashoffset={-((stats.validados / stats.total) * 314.16)}
+                          />
+                        )}
+                        {stats.expirados > 0 && (
+                          <circle
+                            cx="60"
+                            cy="60"
+                            r="50"
+                            fill="transparent"
+                            stroke={C.red}
+                            strokeWidth="10"
+                            strokeDasharray={`${(stats.expirados / stats.total) * 314.16} 314.16`}
+                            strokeDashoffset={-(((stats.validados + stats.alerta) / stats.total) * 314.16)}
+                          />
+                        )}
+                      </svg>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", zIndex: 1 }}>
+                        <span style={{ fontSize: 22, fontWeight: 800, color: C.ink }}>{stats.total}</span>
+                        <span style={{ fontSize: 9.5, color: C.muted, fontWeight: 600 }}>Total</span>
+                      </div>
+                    </div>
+
+                    {/* Legenda do Gráfico */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ width: 12, height: 12, borderRadius: 3, background: C.green }} />
+                        <span style={{ fontSize: 12.5, color: C.body, fontWeight: 600 }}>Válidos: <strong>{stats.validados}</strong></span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ width: 12, height: 12, borderRadius: 3, background: C.amber }} />
+                        <span style={{ fontSize: 12.5, color: C.body, fontWeight: 600 }}>Alerta: <strong>{stats.alerta}</strong></span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ width: 12, height: 12, borderRadius: 3, background: C.red }} />
+                        <span style={{ fontSize: 12.5, color: C.body, fontWeight: 600 }}>Expirados: <strong>{stats.expirados}</strong></span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Cronograma de Vencimento */}
+              <div style={{ flex: 1.2, background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+                <div style={{ fontWeight: 700, color: C.navy, fontSize: 13 }}>📈 Vencimentos nos Próximos 6 Meses</div>
+                {stats.total === 0 ? (
+                  <div style={{ height: 180, display: "flex", alignItems: "center", justify: "center", justifyContent: "center", color: C.muted }}>
+                    Nenhum cronograma disponível.
+                  </div>
+                ) : (
+                  <div style={{ flex: 1, display: "flex", alignItems: "flex-end" }}>
+                    <svg width="100%" height="130" viewBox="0 0 300 130" style={{ overflow: "visible" }}>
+                      <line x1="10" y1="100" x2="290" y2="100" stroke={C.line} strokeWidth="1" />
+                      {(() => {
+                        const maxCount = Math.max(...expirationTimelineData.map(d => d.count), 1);
+                        return expirationTimelineData.map((d, i) => {
+                          const x = 20 + i * 45;
+                          const barHeight = (d.count / maxCount) * 80; // max height is 80px
+                          const y = 100 - barHeight;
+                          return (
+                            <g key={d.label}>
+                              {d.count > 0 && (
+                                <text x={x + 10} y={y - 6} textAnchor="middle" style={{ fontSize: 10, fill: C.navy, fontWeight: 700 }}>
+                                  {d.count}
+                                </text>
+                              )}
+                              <rect
+                                x={x}
+                                y={y}
+                                width="20"
+                                height={barHeight || 1}
+                                rx="3"
+                                style={{
+                                  fill: d.count > 0 ? C.navy : C.navySoft,
+                                  transition: "height 0.4s ease, y 0.4s ease"
+                                }}
+                              />
+                              <text x={x + 10} y="116" textAnchor="middle" style={{ fontSize: 9.5, fill: C.muted, fontWeight: 600 }}>
+                                {d.label}
+                              </text>
+                            </g>
+                          );
+                        });
+                      })()}
+                    </svg>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Próximos Vencimentos */}
+            <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.line}`, fontWeight: 700, color: C.navy, fontSize: 13 }}>
+                ⏳ Próximos Vencimentos Críticos
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
+                  <thead>
+                    <tr style={{ background: C.bg, borderBottom: `1px solid ${C.line}` }}>
+                      <th style={{ padding: "10px 16px", color: C.navy, fontWeight: 700 }}>Nome / Razão Social</th>
+                      <th style={{ padding: "10px 16px", color: C.navy, fontWeight: 700 }}>Vencimento</th>
+                      <th style={{ padding: "10px 16px", color: C.navy, fontWeight: 700 }}>Status</th>
+                      <th style={{ padding: "10px 16px", color: C.navy, fontWeight: 700, textAlign: "right" }}>Ações</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {criticalCerts.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} style={{ padding: 20, textAlign: "center", color: C.muted }}>Nenhum certificado a vencer cadastrado.</td>
+                      </tr>
+                    ) : (
+                      criticalCerts.map((c) => (
+                        <tr key={c.id} style={{ borderBottom: `1px solid ${C.line}` }}>
+                          <td style={{ padding: "12px 16px", fontWeight: 600, color: C.ink }}>{c.nome}</td>
+                          <td style={{ padding: "12px 16px", color: C.body }}>{c.vencimento}</td>
+                          <td style={{ padding: "12px 16px" }}>{renderStatusBadge(c.status_calculado, c.dias_restantes)}</td>
+                          <td style={{ padding: "12px 16px", textAlign: "right" }}>
+                            <div style={{ display: "inline-flex", gap: 8 }}>
+                              <button 
+                                onClick={() => handleInstallSO(c)}
+                                title="Instalar no Windows"
+                                style={{
+                                  background: C.navySoft, color: C.navy, border: "none", padding: 6, 
+                                  borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center"
+                                }}
+                              >
+                                <Key size={14} />
+                              </button>
+                              <button 
+                                onClick={() => handleOpenFolder(c)}
+                                title="Abrir pasta do arquivo local"
+                                style={{
+                                  background: C.navySoft, color: C.navy, border: "none", padding: 6, 
+                                  borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center"
+                                }}
+                              >
+                                <Folder size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          )
+          </div>
+        ) : activeTab === "INSTALADOS" ? (
+          /* Aba de Instruções e Integração Local do Computador */
+          <div style={{ padding: "32px 24px", display: "flex", flexDirection: "column", gap: 24, maxWidth: 900, margin: "0 auto" }}>
+            {/* Header explicativo */}
+            <div style={{ display: "flex", gap: 16, background: C.navySoft, padding: 20, borderRadius: 12, borderLeft: `4px solid ${C.navy}` }}>
+              <Info size={24} color={C.navy} style={{ flexShrink: 0 }} />
+              <div>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 15, fontWeight: 700, color: C.navy }}>Integração Local do Computador</h4>
+                <p style={{ margin: 0, fontSize: 13.5, color: C.body, lineHeight: 1.5 }}>
+                  Para poder abrir pastas físicas da rede e instalar certificados diretamente no seu computador local, é necessário configurar um protocolo seguro no Windows da sua máquina local. Isto é necessário devido às políticas de segurança padrão do navegador (Chrome, Edge, Firefox).
+                </p>
+              </div>
+            </div>
+
+            {/* Grid de dois cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+              {/* Card Esquerda: Download de arquivos */}
+              <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 20, background: "#fff", display: "flex", flexDirection: "column", gap: 16 }}>
+                <h5 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.ink, display: "flex", alignItems: "center", gap: 8 }}>
+                  <FileCode size={18} color={C.navy} /> 1. Arquivos de Configuração
+                </h5>
+                <p style={{ margin: 0, fontSize: 12.5, color: C.muted }}>
+                  Baixe ambos os arquivos no seu computador local para realizar a configuração.
+                </p>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+                  <a 
+                    href={obterHelperScriptUrl()}
+                    download="contabilizare_helper.ps1"
+                    style={{
+                      display: "flex", alignItems: "center", justify: "space-between", justifyContent: "space-between",
+                      padding: "12px 16px", borderRadius: 8, background: C.bg, border: `1px solid ${C.line}`,
+                      color: C.ink, textDecoration: "none", fontSize: 13, fontWeight: 600, transition: "all 0.2s"
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.borderColor = C.navy}
+                    onMouseLeave={(e) => e.currentTarget.style.borderColor = C.line}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Terminal size={16} color={C.muted} />
+                      contabilizare_helper.ps1
+                    </span>
+                    <Download size={15} color={C.navy} />
+                  </a>
+
+                  <a 
+                    href={obterHelperRegUrl()}
+                    download="registrar_protocolo.reg"
+                    style={{
+                      display: "flex", alignItems: "center", justify: "space-between", justifyContent: "space-between",
+                      padding: "12px 16px", borderRadius: 8, background: C.bg, border: `1px solid ${C.line}`,
+                      color: C.ink, textDecoration: "none", fontSize: 13, fontWeight: 600, transition: "all 0.2s"
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.borderColor = C.navy}
+                    onMouseLeave={(e) => e.currentTarget.style.borderColor = C.line}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <FileCode size={16} color={C.muted} />
+                      registrar_protocolo.reg
+                    </span>
+                    <Download size={15} color={C.navy} />
+                  </a>
+                </div>
+              </div>
+
+              {/* Card Direita: Instruções passo-a-passo */}
+              <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 20, background: "#fff", display: "flex", flexDirection: "column", gap: 12 }}>
+                <h5 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.ink, display: "flex", alignItems: "center", gap: 8 }}>
+                  <HelpCircle size={18} color={C.navy} /> 2. Passo a Passo para Instalar
+                </h5>
+                <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: C.body, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <li>Crie uma pasta vazia chamada <strong style={{ color: C.ink }}>C:\Contabilizare</strong> no seu computador.</li>
+                  <li>Mova o arquivo baixado <strong style={{ color: C.ink }}>contabilizare_helper.ps1</strong> para dentro dessa pasta.</li>
+                  <li>Dê um duplo clique no arquivo <strong style={{ color: C.ink }}>registrar_protocolo.reg</strong> e clique em <strong>Sim</strong> quando solicitado para importar ao Registro do Windows.</li>
+                  <li>Pronto! O navegador agora chamará as ações diretamente no seu Windows.</li>
+                </ol>
+              </div>
+            </div>
+
+            {/* Gerenciamento local */}
+            <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 20, background: C.bg, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <h5 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.ink }}>Gerenciar Certificados Instalados no Windows</h5>
+                <p style={{ margin: "4px 0 0 0", fontSize: 12.5, color: C.muted }}>
+                  Abra a ferramenta nativa de gerenciamento de certificados do Windows do seu computador para verificar e gerenciar suas chaves pessoais.
+                </p>
+              </div>
+              <button
+                onClick={() => window.location.href = "contabilizare://open-certmgr"}
+                style={{
+                  background: C.navy, color: "#fff", border: "none", padding: "10px 18px",
+                  borderRadius: 8, fontSize: 13.5, fontWeight: 600, cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: 8, transition: "background 0.2s",
+                  boxShadow: "0 2px 6px rgba(22, 34, 74, 0.1)"
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = C.navyDeep}
+                onMouseLeave={(e) => e.currentTarget.style.background = C.navy}
+              >
+                Abrir certmgr.msc <ExternalLink size={14} />
+              </button>
+            </div>
+          </div>
         ) : (
           /* Tabela Padrão (CNPJ / CPF) */
           certs.length === 0 ? (
@@ -367,7 +689,7 @@ export default function Certificados({ me, active }) {
                       <td style={{ padding: "14px 16px", textAlign: "right" }}>
                         <div style={{ display: "inline-flex", gap: 8 }}>
                           <button 
-                            onClick={() => handleInstallSO(c.id, c.nome)}
+                            onClick={() => handleInstallSO(c)}
                             title="Instalar no Windows"
                             style={{
                               background: C.navySoft, color: C.navy, border: "none", padding: 6, 
@@ -377,7 +699,7 @@ export default function Certificados({ me, active }) {
                             <Key size={14} />
                           </button>
                           <button 
-                            onClick={() => handleOpenFolder(c.id)}
+                            onClick={() => handleOpenFolder(c)}
                             title="Abrir pasta do arquivo local"
                             style={{
                               background: C.navySoft, color: C.navy, border: "none", padding: 6, 

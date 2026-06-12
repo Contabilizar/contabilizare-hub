@@ -371,6 +371,24 @@ export default function Estoque({ me, active }) {
   const totalValFinanceiro = produtos.reduce((sum, p) => sum + (p.estoque_atual * p.preco_custo), 0);
   const totalProdutosAbaixoMin = produtos.filter(p => p.estoque_atual < p.estoque_min).length;
 
+  // Dados agrupados por categoria para o gráfico
+  const categoryChartData = useMemo(() => {
+    const map = {};
+    produtos.forEach(p => {
+      const cat = p.categoria || "Geral";
+      const val = (p.estoque_atual || 0) * (p.preco_custo || 0);
+      map[cat] = (map[cat] || 0) + val;
+    });
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value); // Ordena pelo maior valor
+  }, [produtos]);
+
+  const maxVal = useMemo(() => {
+    return Math.max(...categoryChartData.map(d => d.value), 1);
+  }, [categoryChartData]);
+
+
   // Filtros de busca
   const filteredProds = produtos.filter(p => 
     p.nome.toLowerCase().includes(searchProd.toLowerCase()) || 
@@ -461,65 +479,120 @@ export default function Estoque({ me, active }) {
               </div>
             </div>
 
-            {/* Painel Duplo */}
+            {/* Painel Duplo com Tabelas na Esquerda e Gráfico na Direita */}
             <div style={{ display: "flex", gap: 20 }}>
-              {/* Alertas */}
-              <div style={{ flex: 1, background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.line}`, fontWeight: 700, color: C.red, fontSize: 13 }}>
-                  ⚠️ Produtos com Estoque Crítico
-                </div>
-                <div style={{ maxHeight: "250px", overflow: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-                    <thead>
-                      <tr style={{ background: C.bg, borderBottom: `1px solid ${C.line}`, textAlign: "left" }}>
-                        <th style={{ padding: 10, fontWeight: 600 }}>Produto</th>
-                        <th style={{ padding: 10, fontWeight: 600, textAlign: "center" }}>Qtd. Atual</th>
-                        <th style={{ padding: 10, fontWeight: 600 }}>Qtd. Mínima</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {produtos.filter(p => p.estoque_atual < p.estoque_min).map(p => (
-                        <tr key={p.id} style={{ borderBottom: `1px solid ${C.line}` }}>
-                          <td style={{ padding: 10, fontWeight: 600, color: C.ink }}>{p.nome}</td>
-                          <td style={{ padding: 10, textAlign: "center", color: C.red, fontWeight: 700 }}>{p.estoque_atual} un</td>
-                          <td style={{ padding: 10, color: C.muted }}>{p.estoque_min} un</td>
+              {/* Coluna da Esquerda (Tabelas) */}
+              <div style={{ flex: 1.2, display: "flex", flexDirection: "column", gap: 16 }}>
+                {/* Alertas */}
+                <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                  <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.line}`, fontWeight: 700, color: C.red, fontSize: 13 }}>
+                    ⚠️ Produtos com Estoque Crítico
+                  </div>
+                  <div style={{ maxHeight: "200px", overflow: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                      <thead>
+                        <tr style={{ background: C.bg, borderBottom: `1px solid ${C.line}`, textAlign: "left" }}>
+                          <th style={{ padding: 10, fontWeight: 600 }}>Produto</th>
+                          <th style={{ padding: 10, fontWeight: 600, textAlign: "center" }}>Qtd. Atual</th>
+                          <th style={{ padding: 10, fontWeight: 600 }}>Qtd. Mínima</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {produtos.filter(p => p.estoque_atual < p.estoque_min).length === 0 ? (
+                          <tr>
+                            <td colSpan={3} style={{ padding: 20, textAlign: "center", color: C.muted }}>Nenhum produto abaixo do estoque mínimo.</td>
+                          </tr>
+                        ) : (
+                          produtos.filter(p => p.estoque_atual < p.estoque_min).map(p => (
+                            <tr key={p.id} style={{ borderBottom: `1px solid ${C.line}` }}>
+                              <td style={{ padding: 10, fontWeight: 600, color: C.ink }}>{p.nome}</td>
+                              <td style={{ padding: 10, textAlign: "center", color: C.red, fontWeight: 700 }}>{p.estoque_atual} un</td>
+                              <td style={{ padding: 10, color: C.muted }}>{p.estoque_min} un</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Movimentações Rápidas */}
+                <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                  <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.line}`, fontWeight: 700, color: C.navy, fontSize: 13 }}>
+                    ⚡ Últimas Movimentações
+                  </div>
+                  <div style={{ maxHeight: "200px", overflow: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                      <thead>
+                        <tr style={{ background: C.bg, borderBottom: `1px solid ${C.line}`, textAlign: "left" }}>
+                          <th style={{ padding: 10, fontWeight: 600 }}>Operação</th>
+                          <th style={{ padding: 10, fontWeight: 600 }}>Produto</th>
+                          <th style={{ padding: 10, fontWeight: 600, textAlign: "center" }}>Quantidade</th>
+                          <th style={{ padding: 10, fontWeight: 600 }}>Data</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {movimentos.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} style={{ padding: 20, textAlign: "center", color: C.muted }}>Nenhuma movimentação registrada.</td>
+                          </tr>
+                        ) : (
+                          movimentos.slice(0, 5).map((m, idx) => (
+                            <tr key={idx} style={{ borderBottom: `1px solid ${C.line}` }}>
+                              <td style={{ padding: 10 }}>
+                                <span style={{ fontWeight: 700, color: m.tipo === "Entrada" ? C.green : C.red }}>
+                                  {m.tipo === "Entrada" ? "⬆️ Entrada" : "⬇️ Saída"}
+                                </span>
+                              </td>
+                              <td style={{ padding: 10, fontWeight: 500, color: C.ink }}>{m.produto_nome}</td>
+                              <td style={{ padding: 10, textAlign: "center", fontWeight: 700 }} className="tnum">{m.quantidade}</td>
+                              <td style={{ padding: 10, color: C.muted }} className="tnum">{m.data}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
 
-              {/* Movimentações Rápidas */}
-              <div style={{ flex: 1, background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.line}`, fontWeight: 700, color: C.navy, fontSize: 13 }}>
-                  ⚡ Últimas Movimentações
-                </div>
-                <div style={{ maxHeight: "250px", overflow: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-                    <thead>
-                      <tr style={{ background: C.bg, borderBottom: `1px solid ${C.line}`, textAlign: "left" }}>
-                        <th style={{ padding: 10, fontWeight: 600 }}>Operação</th>
-                        <th style={{ padding: 10, fontWeight: 600 }}>Produto</th>
-                        <th style={{ padding: 10, fontWeight: 600, textAlign: "center" }}>Quantidade</th>
-                        <th style={{ padding: 10, fontWeight: 600 }}>Data</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {movimentos.slice(0, 5).map((m, idx) => (
-                        <tr key={idx} style={{ borderBottom: `1px solid ${C.line}` }}>
-                          <td style={{ padding: 10 }}>
-                            <span style={{ fontWeight: 700, color: m.tipo === "Entrada" ? C.green : C.red }}>
-                              {m.tipo === "Entrada" ? "⬆️ Entrada" : "⬇️ Saída"}
-                            </span>
-                          </td>
-                          <td style={{ padding: 10, fontWeight: 500, color: C.ink }}>{m.produto_nome}</td>
-                          <td style={{ padding: 10, textAlign: "center", fontWeight: 700 }} className="tnum">{m.quantidade}</td>
-                          <td style={{ padding: 10, color: C.muted }} className="tnum">{m.data}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              {/* Coluna da Direita (Gráfico SVG) */}
+              <div style={{ flex: 1, display: "flex" }}>
+                <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: 20, display: "flex", flexDirection: "column", gap: 16, width: "100%" }}>
+                  <div style={{ fontWeight: 700, color: C.navy, fontSize: 13 }}>📊 Valor em Estoque por Categoria</div>
+                  {categoryChartData.length === 0 ? (
+                    <div style={{ flex: 1, display: "flex", alignItems: "center", justify: "center", justifyContent: "center", color: C.muted, fontSize: 13 }}>
+                      Nenhum produto cadastrado para gerar estatísticas.
+                    </div>
+                  ) : (
+                    <div style={{ overflowY: "auto", flex: 1 }}>
+                      <svg width="100%" height={categoryChartData.length * 36 + 20} viewBox={`0 0 450 ${categoryChartData.length * 36 + 20}`} style={{ overflow: "visible" }}>
+                        {categoryChartData.map((d, i) => {
+                          const barWidth = (d.value / maxVal) * 240; // max bar width 240px
+                          const y = i * 36 + 10;
+                          return (
+                            <g key={d.name}>
+                              {/* Categoria Label */}
+                              <text x="10" y={y + 12} style={{ fontSize: 12, fill: C.ink, fontWeight: 600 }}>
+                                {d.name.length > 15 ? d.name.substring(0, 13) + "..." : d.name}
+                              </text>
+                              
+                              {/* Background Track */}
+                              <rect x="130" y={y} width="240" height="16" rx="4" style={{ fill: C.navySoft }} />
+                              
+                              {/* Foreground Bar */}
+                              <rect x="130" y={y} width={barWidth} height="16" rx="4" style={{ fill: C.navy, transition: "width 0.5s ease" }} />
+                              
+                              {/* Value text */}
+                              <text x={135 + barWidth} y={y + 12} style={{ fontSize: 11.5, fill: C.muted, fontWeight: 700 }}>
+                                {money(d.value)}
+                              </text>
+                            </g>
+                          );
+                        })}
+                      </svg>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
