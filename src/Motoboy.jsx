@@ -41,7 +41,9 @@ const formatDateBr = (dStr) => {
 };
 
 export default function Motoboy({ db, saveMotoboy, me, notify }) {
-  const [tab, setTab] = useState("solicitacoes"); // "solicitacoes" ou "manutencao"
+  const canViewSolic = me?.isAdmin || (me?.view || []).includes("motoboy_solic");
+  const canViewManut = me?.isAdmin || (me?.view || []).includes("motoboy_manut");
+  const [tab, setTab] = useState(canViewSolic ? "solicitacoes" : "manutencao");
   const [subTab, setSubTab] = useState("resumo"); // "resumo", "abastecimento", "oleo", "manutencao", "moto"
   
   // Dados estruturados herdados ou padrões vazios
@@ -60,7 +62,7 @@ export default function Motoboy({ db, saveMotoboy, me, notify }) {
   // Permissões
   const isAdmin = me?.isAdmin === true;
   const isMotoboy = me?.cargo?.toLowerCase() === "motoboy" || me?.nome?.toLowerCase() === "motoboy" || me?.deptEdit === "motoboy";
-  const canManageMoto = isAdmin || isMotoboy;
+  const canManageMoto = isAdmin || (me?.view || []).includes("motoboy_manut");
 
   // Filtros de solicitações
   const [filterStatus, setFilterStatus] = useState("Todos");
@@ -182,6 +184,17 @@ export default function Motoboy({ db, saveMotoboy, me, notify }) {
   // Filtro de solicitações
   const listSolic = useMemo(() => {
     return solicitacoes.filter(s => {
+      const isAdmin = me?.isAdmin;
+      const isMotoboyDept = me?.dept === "motoboy";
+      const myDept = me?.dept;
+      const myDeptEdit = me?.deptEdit;
+      
+      const hasAccess = isAdmin || isMotoboyDept || 
+        (s.solicitante_setor && (s.solicitante_setor === myDept || s.solicitante_setor === myDeptEdit)) ||
+        (s.solicitante_nome && s.solicitante_nome === me?.nome);
+        
+      if (!hasAccess) return false;
+
       const matchStatus = filterStatus === "Todos" || s.status === filterStatus;
       const q = searchQuery.toLowerCase();
       const matchSearch = !q || 
@@ -190,7 +203,7 @@ export default function Motoboy({ db, saveMotoboy, me, notify }) {
         (s.solicitante_nome || "").toLowerCase().includes(q);
       return matchStatus && matchSearch;
     });
-  }, [solicitacoes, filterStatus, searchQuery]);
+  }, [solicitacoes, filterStatus, searchQuery, me]);
 
   // Handlers para Ações
   const handleAddSolic = () => {
@@ -427,30 +440,34 @@ export default function Motoboy({ db, saveMotoboy, me, notify }) {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       {/* Abas Superiores Principais */}
       <div style={{ display: "flex", borderBottom: `1px solid ${C.line}`, marginBottom: 14, flexShrink: 0 }}>
-        <button 
-          onClick={() => setTab("solicitacoes")} 
-          style={{
-            flex: 1, padding: "12px 8px", border: "none", borderBottom: `3px solid ${tab === "solicitacoes" ? C.navy : "transparent"}`,
-            background: "transparent", color: tab === "solicitacoes" ? C.navy : C.muted, fontSize: 14.5, fontWeight: tab === "solicitacoes" ? 800 : 600,
-            cursor: "pointer"
-          }}
-        >
-          Solicitações de Entrega
-        </button>
-        <button 
-          onClick={() => setTab("manutencao")} 
-          style={{
-            flex: 1, padding: "12px 8px", border: "none", borderBottom: `3px solid ${tab === "manutencao" ? C.navy : "transparent"}`,
-            background: "transparent", color: tab === "manutencao" ? C.navy : C.muted, fontSize: 14.5, fontWeight: tab === "manutencao" ? 800 : 600,
-            cursor: "pointer"
-          }}
-        >
-          Manutenção do Veículo
-        </button>
+        {canViewSolic && (
+          <button 
+            onClick={() => setTab("solicitacoes")} 
+            style={{
+              flex: 1, padding: "12px 8px", border: "none", borderBottom: `3px solid ${tab === "solicitacoes" ? C.navy : "transparent"}`,
+              background: "transparent", color: tab === "solicitacoes" ? C.navy : C.muted, fontSize: 14.5, fontWeight: tab === "solicitacoes" ? 800 : 600,
+              cursor: "pointer"
+            }}
+          >
+            Solicitações de Entrega
+          </button>
+        )}
+        {canViewManut && (
+          <button 
+            onClick={() => setTab("manutencao")} 
+            style={{
+              flex: 1, padding: "12px 8px", border: "none", borderBottom: `3px solid ${tab === "manutencao" ? C.navy : "transparent"}`,
+              background: "transparent", color: tab === "manutencao" ? C.navy : C.muted, fontSize: 14.5, fontWeight: tab === "manutencao" ? 800 : 600,
+              cursor: "pointer"
+            }}
+          >
+            Manutenção do Veículo
+          </button>
+        )}
       </div>
 
       {/* ABA 1: SOLICITAÇÕES DE ENTREGA */}
-      {tab === "solicitacoes" && (
+      {canViewSolic && tab === "solicitacoes" && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           {/* Header e Filtros */}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 14, flexShrink: 0 }}>
@@ -618,7 +635,7 @@ export default function Motoboy({ db, saveMotoboy, me, notify }) {
       )}
 
       {/* ABA 2: CONTROLE DE MANUTENÇÃO (REPLICA DA PLANILHA) */}
-      {tab === "manutencao" && (
+      {canViewManut && tab === "manutencao" && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           {/* Sub Menu de Controle de Veículo */}
           <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 8, marginBottom: 12, flexShrink: 0 }}>

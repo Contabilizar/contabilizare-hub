@@ -372,7 +372,7 @@ const RAW=`489|163 STORE LTDA|31.713.281/0001-53|SIMPLES NACIONAL|SINOP|COMÉRCI
 378|ZAGO TRANSPORTES LTDA ME|14.999.430/0001-73|LUCRO REAL|SORRISO|TRANSPORTES|SUELEN||SEM FOLHA|Ativo|
 421|ZENILDA ALVES CHUPEL|22.616.268/0001-95|SIMPLES NACIONAL|SORRISO|TRANSPORTES CARGAS|SUELEN|YESA|LANÇAMENTO|Ativo|`;
 const REGISTRY_SEED=RAW.trim().split("\n").map((ln,i)=>{const p=ln.split("|");return {id:i+1,codigo:p[0],razao:p[1],cnpj:p[2],regime:p[3]||"–",municipio:p[4]||"",segmento:p[5]||"",respFiscal:p[6]||"",respPessoal:p[7]||"",tipoFolha:p[8]||"SEM FOLHA",situacao:p[9]||"Ativo",dataSituacao:p[10]||""};});
-const VIEW_ALL=["central","fiscal","pessoal","contabil","paralegal","financeiro","recepcao","rh","motoboy"];
+const VIEW_ALL=["central","fiscal","pessoal","contabil","paralegal","financeiro","recepcao","rh","motoboy_solic","motoboy_manut"];
 const EMP_SEED=[{id:1,nome:"Willian Pereira",cpf:"",email:"admin@contabilizar.com",cargo:"Administrador",dept:"admin",user:"admin",pwd:"123",isAdmin:true,canCentral:true,canAssign:true,onlyAssigned:false,deptEdit:"",view:VIEW_ALL.slice(),ativo:true},
 {id:2,nome:"Lucas Martins",cpf:"",email:"financeiro@contabilizar.com",cargo:"Gestor Financeiro",dept:"financeiro",user:"financeiro",pwd:"123",isAdmin:false,canCentral:true,canAssign:true,onlyAssigned:false,deptEdit:"financeiro",view:VIEW_ALL.slice(),ativo:true},
 {id:3,nome:"Hudson",cpf:"",email:"hudson@contabilizar.com",cargo:"Analista Pessoal",dept:"pessoal",user:"hudson",pwd:"123",isAdmin:false,canCentral:false,canAssign:false,onlyAssigned:true,deptEdit:"pessoal",view:VIEW_ALL.slice(),ativo:true},
@@ -492,7 +492,7 @@ function fiscalNextDue(c,pd,comp,regimes,prazos){if(!pd||pd.semMovimento)return 
 const OBRIG_ST=["Pendente","Entregue","N/A","Não obrigada"];
 const PROC=["holerites","vrCesta","alocRPA","fgts","darfDae","dcomp"];
 const OTHER_DEPTS=["contabil","paralegal","financeiro","recepcao"];
-const DEPT_LABEL={central:"Cadastro Central",fiscal:"Fiscal",pessoal:"Pessoal",contabil:"Contábil",paralegal:"Paralegal",financeiro:"Financeiro",recepcao:"Recepção",rh:"RH Interno",motoboy:"Controle do Motoboy"};
+const DEPT_LABEL={central:"Cadastro Central",fiscal:"Fiscal",pessoal:"Pessoal",contabil:"Contábil",paralegal:"Paralegal",financeiro:"Financeiro",recepcao:"Recepção",rh:"RH Interno",motoboy:"Motoboy",motoboy_solic:"Motoboy: Solicitações",motoboy_manut:"Motoboy: Manutenção do Veículo"};
 
 function defaultPD(c){
   const obrig={}; OBRIG.forEach(([,k])=>obrig[k]={obrig:"Pendente",data:"",ret:""});
@@ -534,7 +534,7 @@ function Bar({pct,w}){return <div style={{height:6,width:w||"100%",borderRadius:
 function RowProg({excl,prog}){ if(excl) return <Pill bg={C.navySoft} fg={C.navy} br="#dbe2f0">{excl}</Pill>;
   return <div style={{display:"flex",alignItems:"center",gap:8,minWidth:96}}><Bar pct={prog} w={56} /><span className="tnum" style={{fontSize:13.5,fontWeight:800,color:barColor(prog)}}>{prog}%</span></div>; }
 
-const DEPTS=[{key:"central",label:"Cadastro Central",icon:Building2,hint:"Fonte única"},{key:"fiscal",label:"Fiscal",icon:Receipt},{key:"pessoal",label:"Pessoal",icon:Users},{key:"contabil",label:"Contábil",icon:BookOpen},{key:"paralegal",label:"Paralegal",icon:Scale},{key:"financeiro",label:"Financeiro",icon:Wallet},{key:"recepcao",label:"Recepção",icon:Phone},{key:"rh",label:"RH Interno",icon:UserCog},{key:"estoque",label:"Controle de Estoque",icon:Package},{key:"certificados",label:"Certificados Digitais",icon:ShieldCheck},{key:"motoboy",label:"Controle do Motoboy",icon:Bike,hint:"Entregas & Veículos"}];
+const DEPTS=[{key:"central",label:"Cadastro Central",icon:Building2,hint:"Fonte única"},{key:"fiscal",label:"Fiscal",icon:Receipt},{key:"pessoal",label:"Pessoal",icon:Users},{key:"contabil",label:"Contábil",icon:BookOpen},{key:"paralegal",label:"Paralegal",icon:Scale},{key:"financeiro",label:"Financeiro",icon:Wallet},{key:"recepcao",label:"Recepção",icon:Phone},{key:"rh",label:"RH Interno",icon:UserCog},{key:"estoque",label:"Controle de Estoque",icon:Package},{key:"certificados",label:"Certificados Digitais",icon:ShieldCheck},{key:"motoboy",label:"Motoboy",icon:Bike,hint:"Entregas & Veículos"}];
 const money=(n)=>(typeof n==="number"?n:Number(n)||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 const FISCAL_FORM=[{sec:"Observações importantes",rows:[{k:"fat",l:"Faturamento Mensal",t:"money"},{k:"distLucro",l:"Distribuição de Lucro",t:"text"},{k:"fatorR",l:"Fator R",t:"sel",o:SN},{k:"concomitante",l:"Concomitante",t:"sel",o:SN},{k:"obrigTEF",l:"Obrigat. TEF",t:"sel",o:SN},{k:"stAntecip",l:"Recolh. ST Antecip.",t:"sel",o:SN},{k:"beneficioFiscal",l:"Benefício Fiscal",t:"text"}]},
 {sec:"Escrituração",rows:[{k:"entradas",l:"Entradas",t:"money"},{k:"saidas",l:"Saídas",t:"money"},{k:"servPrest",l:"Serv. Prestados",t:"money"},{k:"servTom",l:"Serv. Tomados",t:"money"},{k:"cteEmit",l:"CT-e Emit.",t:"money"},{k:"cteTom",l:"CT-e Tom.",t:"money"},{k:"nfce",l:"NFC-e",t:"money"}]},
@@ -655,7 +655,7 @@ export default function App(){
   const isAdmin=me&&!!me.isAdmin;
   const canManageCentral=me&&(isAdmin||!!me.canCentral);
   const canEditDept=(d)=>me&&(isAdmin||d==="estoque"||d==="certificados"||d==="motoboy"||me.deptEdit===d);
-  const canView=(d)=>me&&(isAdmin||d==="estoque"||d==="certificados"||d==="motoboy"||(me.view||[]).includes(d));
+  const canView=(d)=>me&&(isAdmin||d==="estoque"||d==="certificados"||(d==="motoboy"&&(me.view.includes("motoboy_solic")||me.view.includes("motoboy_manut")))||(me.view||[]).includes(d));
   const canAssignHere=(kind)=>me&&(isAdmin||(me.canAssign&&me.deptEdit===kind));
   const canEditFicha=(c,kind)=>{ if(!me)return false; if(isAdmin)return true; if(me.deptEdit!==kind)return false; if(me.onlyAssigned){const r=kind==="fiscal"?c.respFiscal:c.respPessoal; return r===me.nome;} return true; };
 
@@ -1305,7 +1305,7 @@ function EmpModal({emp,employees,onClose,onSave,onDelete}){
         <div><label style={fl}>CPF</label><input value={v.cpf} onChange={e=>set("cpf",e.target.value)} style={{...inputS,borderColor:cpfBad?C.amber:C.line}} placeholder="000.000.000-00" />{cpfBad&&<div style={{fontSize:12,color:C.amber,marginTop:3,display:"flex",alignItems:"center",gap:4}}><AlertTriangle size={11}/>CPF inválido</div>}</div>
         <div><label style={fl}>E-mail</label><input value={v.email} onChange={e=>set("email",e.target.value)} style={inputS} placeholder="nome@contabilizar.com" /></div>
         <div><label style={fl}>Cargo</label><input value={v.cargo} onChange={e=>set("cargo",e.target.value)} style={inputS} placeholder="Ex.: Analista Fiscal" /></div>
-        <div><label style={fl}>Departamento</label><select value={v.dept} disabled={v.isAdmin} onChange={e=>set("dept",e.target.value)} style={{...inputS,cursor:v.isAdmin?"not-allowed":"pointer"}}>{["fiscal","pessoal","contabil","paralegal","financeiro","recepcao","rh"].map(d=><option key={d} value={d}>{DEPT_LABEL[d]}</option>)}</select></div>
+        <div><label style={fl}>Departamento</label><select value={v.dept} disabled={v.isAdmin} onChange={e=>set("dept",e.target.value)} style={{...inputS,cursor:v.isAdmin?"not-allowed":"pointer"}}>{["fiscal","pessoal","contabil","paralegal","financeiro","recepcao","rh","motoboy"].map(d=><option key={d} value={d}>{DEPT_LABEL[d]}</option>)}</select></div>
       </div>
       <div style={{height:1,background:C.line,margin:"16px 0 4px"}} />
       <div style={{fontSize:13,fontWeight:800,color:C.navy,letterSpacing:.4,textTransform:"uppercase",margin:"8px 0"}}><KeyRound size={13} style={{verticalAlign:-2,marginRight:5}} />Credenciais de acesso</div>
